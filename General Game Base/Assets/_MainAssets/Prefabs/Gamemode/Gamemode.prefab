@@ -60,6 +60,7 @@ MonoBehaviour:
   playerHud: {fileID: 114953043906643862, guid: 71e97e413edfae6499eccaf751950f10,
     type: 2}
   isOnlineEnabled: 1
+  debugText: {fileID: 0}
 --- !u!114 &114996872527894366
 MonoBehaviour:
   m_ObjectHideFlags: 1
