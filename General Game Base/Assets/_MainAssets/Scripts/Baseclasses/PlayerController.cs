@@ -14,8 +14,4 @@ public class PlayerController : MonoBehaviour {
 
     }
 
-    public virtual void PossessPawn(Pawn pawn)
-    {
-        currentPawn = pawn;
-    }
 }

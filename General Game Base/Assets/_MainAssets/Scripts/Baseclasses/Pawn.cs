@@ -13,6 +13,7 @@ public class Pawn : Photon.MonoBehaviour {
     //private
     private bool possessed = false;
     protected PhotonView pv;
+    protected PlayerController pc;
 
     protected virtual void Awake()
     {
@@ -23,13 +24,15 @@ public class Pawn : Photon.MonoBehaviour {
         }
     }
 
-    public virtual bool TryPossessPawn(PlayerController pc)
+    public virtual bool TryPossessPawn(PlayerController plc)
     {
         if (Possessable && !possessed)
         {
-            pc.PossessPawn(this);
             if (pv != null)
+            {
                 pv.RPC("Possessed", PhotonTargets.All, true);
+                pc = plc;
+            }
             return true;
         }
         else
