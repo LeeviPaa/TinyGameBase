@@ -45,11 +45,16 @@ public class ParkourPlayerPawn : Pawn {
     public float sidestepSpeedMod = 0.75f;
 
     //wallrunning
+    public float wallrunSpeed = 17;
     public float wallrunningGravity = 10;
     public float minVelocityToWallrun = 10;
     public float jumpFromWallrunTime = 0.1f;
-    public float jumpFromWallrunCooldown = 0.2f;
+    public float wallrunJumpMultiplier = 2;
+    public float wallrunLungeMultiplier = 3;
     private bool canWallrun = false;
+    private bool wallrunJumpGoing = false;
+    private bool cantWallrunBeforeReset = false;
+    private bool wallrunJumped = false;
 
     //climbing 
     public float climbForwardDistance = 0.5f;
@@ -107,6 +112,7 @@ public class ParkourPlayerPawn : Pawn {
 
         //debug text
         t.text = currPlayerState.ToString() + "\n" + "Prev re-jump: " + currReJumps.ToString();
+        Debug.Log(Input.GetAxis("HorizontalWallJump"));
     }
     private void CheckInputForNonUpdate()
     {
@@ -170,7 +176,7 @@ public class ParkourPlayerPawn : Pawn {
                 StartCoroutine(ReJumpTimer());
                 canReJump = true;
                 landedThisFrame = true;
-                cantWallrunBeforeHitGroundAgain = false;
+                cantWallrunBeforeReset = false;
                 velocityOnJumpStart = Vector3.zero;
             }
             else
@@ -209,10 +215,10 @@ public class ParkourPlayerPawn : Pawn {
     }
     private bool Wallrun()
     {
-        Debug.Log("Wallrun");
-        if (currWallrunWall != null && Input.GetButton("Jump"))
+        if (currWallrunWall != null && Input.GetButton("Jump") && !wallrunJumpGoing)
         {
             currPlayerState = PlayerState.WALLRUNNING;
+            wallrunJumped = false;
 
             if (currJumpSpeed > 0)
             {
@@ -225,7 +231,7 @@ public class ParkourPlayerPawn : Pawn {
 
             Plane P = new Plane(currWallrunWall.transform.up, currWallrunWall.transform.position);
 
-            Vector3 moveVector = (transform.forward * Input.GetAxis("Vertical") + transform.right * Input.GetAxis("Horizontal")) * speed * Time.deltaTime;
+            Vector3 moveVector = (transform.forward * Input.GetAxis("Vertical") + transform.right * Input.GetAxis("Horizontal")) * wallrunSpeed * Time.deltaTime;
             Vector3 point = transform.position + moveVector;
 
             float delta = P.GetDistanceToPoint(point);
@@ -233,6 +239,7 @@ public class ParkourPlayerPawn : Pawn {
             moveVector -= P.normal * delta;
             moveVector -= Vector3.up * wallrunningGravity*Time.deltaTime;
             moveVector += Vector3.up * currJumpSpeed * Time.deltaTime;
+            currVelocity = moveVector;
 
             pc.Move(moveVector);
 
@@ -246,12 +253,20 @@ public class ParkourPlayerPawn : Pawn {
         else if (Input.GetButtonUp("Jump"))
         {
             Debug.LogWarning("Stopped wallrunning");
-            currPlayerState = PlayerState.FALLING;
-            return false;
+            StartCoroutine(WallrunJump());
+            wallrunJumpGoing = true;
+            return true;
+        }
+        else if (wallrunJumpGoing && !cantWallrunBeforeReset)
+        {
+            pc.Move(currVelocity);
+            return true;
         }
         else
         {
-            currPlayerState = PlayerState.FALLING;
+            if(currPlayerState == PlayerState.WALLRUNNING)
+                currPlayerState = PlayerState.FALLING;
+
             return false;
         }
     }
@@ -355,7 +370,7 @@ public class ParkourPlayerPawn : Pawn {
         else
         {
             currJumpSpeed = jumpSpeed * jumpMultiplier;
-            StartCoroutine(HoldToJumpLonger());
+            StartCoroutine(HoldToJumpLonger(1));
             prevReJumpSuccess = false;
             currReJumps = 0;
         }
@@ -384,6 +399,12 @@ public class ParkourPlayerPawn : Pawn {
     }
     public void StartWallrunning(WallrunnableWall wall)
     {
+        if (wall != currWallrunWall)
+        {
+            cantWallrunBeforeReset = false;
+            wallrunJumpGoing = false;
+        }
+
         Vector3 currvelocityWithoutY = pc.velocity;
         currWallrunWall = wall;
         currvelocityWithoutY.y = 0;
@@ -392,20 +413,25 @@ public class ParkourPlayerPawn : Pawn {
         {
             velocityOnJumpStart = Vector3.zero;
             canWallrun = true;
+            gravity = 0;
         }
     }
 
     bool getButtonDownJump = false;
     bool getButtonJump = false;
     bool getbuttonUpJump = false;
-    bool cantWallrunBeforeHitGroundAgain = false;
     WallrunnableWall currWallrunWall;
     public void UpdateRunnableWall(WallrunnableWall wall)
     {
+        if (wall != currWallrunWall)
+            cantWallrunBeforeReset = false;
+
+        currWallrunWall = wall;
+
         Vector3 currvelocityWithoutY = pc.velocity;
         currvelocityWithoutY.y = 0;
 
-        if (currvelocityWithoutY.magnitude > minVelocityToWallrun && !cantWallrunBeforeHitGroundAgain)
+        if (currvelocityWithoutY.magnitude > minVelocityToWallrun && !cantWallrunBeforeReset)
         {
             canWallrun = true;
             currWallrunWall = wall;
@@ -413,16 +439,46 @@ public class ParkourPlayerPawn : Pawn {
         else
         {
             canWallrun = false;
-            velocityOnJumpStart = pc.velocity;
+            cantWallrunBeforeReset = true;
+
             currPlayerState = PlayerState.FALLING;
-            cantWallrunBeforeHitGroundAgain = true;
+
+            if(!wallrunJumped)
+                velocityOnJumpStart = pc.velocity;
         }
     }
     public void ExitRunnableWall(WallrunnableWall wall)
     {
         canWallrun = false;
         currPlayerState = PlayerState.FALLING;
-        velocityOnJumpStart = pc.velocity;
+
+        if(!wallrunJumped)
+            velocityOnJumpStart = pc.velocity;
+    }
+    IEnumerator WallrunJump()
+    {
+        float t = 0;
+        while (t < jumpFromWallrunTime)
+        {
+            if(Input.GetButton("Jump") && wallrunJumpGoing)
+            {
+                Debug.LogWarning("execute jump!");
+
+                //Jump(wallrunJumpMultiplier);
+                StartCoroutine(HoldToJumpLonger(wallrunJumpMultiplier));
+                velocityOnJumpStart = (transform.forward * Input.GetAxis("Vertical") + transform.right * Input.GetAxis("HorizontalWallJump")) * speed * wallrunLungeMultiplier;
+                wallrunJumpGoing = false;
+                canWallrun = false;
+                wallrunJumped = true;
+                gravity = 0;
+                currPlayerState = PlayerState.JUMPING;
+                break;
+            }
+            t += Time.deltaTime;
+            yield return null;
+        }
+        wallrunJumpGoing = false;
+        cantWallrunBeforeReset = true;
     }
     IEnumerator ClimbALedge(Vector3 startPos, Vector3 midway, Vector3 destination)
     {
@@ -451,18 +507,20 @@ public class ParkourPlayerPawn : Pawn {
         
     }
     bool hitCelingWhileHoldingJump = false;
-    IEnumerator HoldToJumpLonger()
+    IEnumerator HoldToJumpLonger(float jumpMultiplier)
     {
         hitCelingWhileHoldingJump = false;
         float time = 0;
         while(time < holdToJumpLongerTime 
             && Input.GetButton("Jump") 
             && !hitCelingWhileHoldingJump 
-            && currPlayerState != PlayerState.CLIMBING 
-            && currPlayerState != PlayerState.WALLRUNNING)
+            && currPlayerState != PlayerState.CLIMBING)
         {
             time += Time.deltaTime;
-            currJumpSpeed = jumpSpeed;
+
+            if (currPlayerState != PlayerState.WALLRUNNING && !canWallrun)
+                currJumpSpeed = jumpSpeed * jumpMultiplier;
+
             yield return null;
         }
     }

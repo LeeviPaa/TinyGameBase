@@ -435,10 +435,12 @@ MonoBehaviour:
   sprintSpeedMod: 2
   reverseSpeedMod: 0.7
   sidestepSpeedMod: 0.75
+  wallrunSpeed: 20
   wallrunningGravity: 3
-  minVelocityToWallrun: 10
-  jumpFromWallrunTime: 0.1
-  jumpFromWallrunCooldown: 0.5
+  minVelocityToWallrun: 7
+  jumpFromWallrunTime: 0.25
+  wallrunJumpMultiplier: 1
+  wallrunLungeMultiplier: 2
   climbForwardDistance: 1
   t: {fileID: 114689850287042536}
 --- !u!114 &114440248525200684
