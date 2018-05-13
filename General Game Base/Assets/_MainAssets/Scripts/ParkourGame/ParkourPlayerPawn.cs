@@ -40,10 +40,18 @@ public class ParkourPlayerPawn : Pawn {
     public float speed = 10;
     public float rotationSpeed = 10;
     private CollisionFlags prevColl;
+    public float sprintSpeedMod = 2;
+    public float reverseSpeedMod = 0.6f;
+    public float sidestepSpeedMod = 0.75f;
 
     //wallrunning
     public float wallrunningGravity = 10;
     public float minVelocityToWallrun = 10;
+    public float jumpFromWallrunTime = 0.1f;
+    public float jumpFromWallrunCooldown = 0.2f;
+
+    //climbing 
+    public float climbForwardDistance = 0.5f;
 
     //private
     private Transform playerCamera;
@@ -66,8 +74,9 @@ public class ParkourPlayerPawn : Pawn {
         //if this is not mine, don't do anything!
         if (!pv.isMine) { return; }
 
-        //always can rotate camera
-        if(!Cursor.visible)
+        //always can rotate camera and get input
+        CheckInputForNonUpdate();
+        if (!Cursor.visible)
             playerCamera.Rotate(new Vector3(-Input.GetAxis("Mouse Y") * rotationSpeed * Time.deltaTime, 0));
 
         //if we are climbing, don't do anything
@@ -94,6 +103,13 @@ public class ParkourPlayerPawn : Pawn {
 
         //debug text
         t.text = currPlayerState.ToString() + "\n" + "Prev re-jump: " + currReJumps.ToString();
+    }
+    private void CheckInputForNonUpdate()
+    {
+        getButtonDownJump = Input.GetButtonDown("Jump");
+        getButtonJump = Input.GetButton("Jump");
+        getbuttonUpJump = Input.GetButtonUp("Jump");
+
     }
     #endregion
 
@@ -192,8 +208,25 @@ public class ParkourPlayerPawn : Pawn {
         if (currPlayerState == PlayerState.GROUNDED || canReJump || currPlayerState == PlayerState.WALLRUNNING)
         {
             //Movement
-            currVelocity = (transform.forward * Input.GetAxis("Vertical")) + (transform.right * Input.GetAxis("Horizontal"));
-            currVelocity *= speed;
+
+            Vector3 vertical = transform.forward * Input.GetAxis("Vertical");
+            if(Input.GetAxis("Vertical") < 0)
+            {
+                vertical *= reverseSpeedMod;
+            }
+
+            Vector3 horizontal = transform.right * Input.GetAxis("Horizontal") * sidestepSpeedMod;
+            //sprinting
+            if (Input.GetButton("Sprint"))
+            {
+                if ( Input.GetAxis("Vertical") > 0)
+                    vertical *= sprintSpeedMod;
+
+                horizontal *= sprintSpeedMod;
+            }
+
+            currVelocity = (vertical + horizontal);
+            currVelocity *= speed; 
         }
         else if(currPlayerState == PlayerState.JUMPING || currPlayerState == PlayerState.FALLING) // Movement in air is impaired
         {
@@ -206,7 +239,7 @@ public class ParkourPlayerPawn : Pawn {
         {
             if (currPlayerState != PlayerState.JUMPING && currPlayerState != PlayerState.FALLING)
             {
-                Jump();
+                Jump(1);
             }
             else if (!bridgeToReJumpCooldown)
             {
@@ -248,7 +281,7 @@ public class ParkourPlayerPawn : Pawn {
 
     #region actions
     bool reJumpedInTimeWindow = false;
-    private void Jump()
+    private void Jump(float jumpMultiplier)
     {
         if (canReJump)
         {
@@ -261,14 +294,14 @@ public class ParkourPlayerPawn : Pawn {
                 currReJumps = 0;
             }
 
-            currJumpSpeed = jumpSpeed + jumpSpeed * reJumpIncrement * currReJumps;
+            currJumpSpeed = jumpSpeed + jumpSpeed * reJumpIncrement * currReJumps * jumpMultiplier;
             prevReJumpSuccess = true;
             reJumpedInTimeWindow = true;
             canReJump = false;
         }
         else
         {
-            currJumpSpeed = jumpSpeed;
+            currJumpSpeed = jumpSpeed * jumpMultiplier;
             StartCoroutine(HoldToJumpLonger());
             prevReJumpSuccess = false;
             currReJumps = 0;
@@ -282,8 +315,13 @@ public class ParkourPlayerPawn : Pawn {
         Debug.Log("can climb!");
         if(Input.GetButton("Jump") && currPlayerState != PlayerState.CLIMBING)
         {
+            float upOffset = pc.height / 2;
+            float distYToLedgeY = Mathf.Abs(ledge.transform.position.y - transform.position.y) + 0.05f; ;
+
             currPlayerState = PlayerState.CLIMBING;
-            StartCoroutine(ClimbALedge(transform.position,transform.position + new Vector3(0, 2, 0), ledge.transform.position + new Vector3(0,2,0)));
+            StartCoroutine(ClimbALedge(transform.position,
+                transform.position + new Vector3(0, upOffset + distYToLedgeY, 0), 
+                transform.position + new Vector3(0, upOffset + distYToLedgeY, 0) + transform.forward * climbForwardDistance));
         }
     }
     public void FallOffMap()
@@ -296,31 +334,46 @@ public class ParkourPlayerPawn : Pawn {
         Vector3 currvelocityWithoutY = pc.velocity;
         currvelocityWithoutY.y = 0;
         
-        if (Input.GetButton("Jump") && currvelocityWithoutY.magnitude > minVelocityToWallrun)
+        if (getButtonJump && currvelocityWithoutY.magnitude > minVelocityToWallrun)
         {
             currJumpSpeed = 0;
             velocityOnJumpStart = Vector3.zero;
         }
     }
+
+    bool getButtonDownJump = false;
+    bool getButtonJump = false;
+    bool getbuttonUpJump = false;
     public void UpdateRunnableWall(WallrunnableWall wall)
     {
-        Debug.Log("can Wallrun!");
+
 
         Vector3 currvelocityWithoutY = pc.velocity;
         currvelocityWithoutY.y = 0;
 
-        if (Input.GetButton("Jump") && currvelocityWithoutY.magnitude > minVelocityToWallrun)
+        if (getButtonJump)
         {
-            currPlayerState = PlayerState.WALLRUNNING;
+            if (currvelocityWithoutY.magnitude > minVelocityToWallrun)
+            {
+                currPlayerState = PlayerState.WALLRUNNING;
+            }
+            else
+            {
+                currPlayerState = PlayerState.FALLING;
+                velocityOnJumpStart = currVelocity;
+            }
         }
         else
         {
             currPlayerState = PlayerState.FALLING;
+            velocityOnJumpStart = currVelocity;
         }
     }
+
     public void ExitRunnableWall(WallrunnableWall wall)
     {
         currPlayerState = PlayerState.FALLING;
+        velocityOnJumpStart = currVelocity;
     }
     IEnumerator ClimbALedge(Vector3 startPos, Vector3 midway, Vector3 destination)
     {
@@ -328,6 +381,7 @@ public class ParkourPlayerPawn : Pawn {
         float position = 0;
         float climbSpeed = 1;
         velocityOnJumpStart = Vector3.zero;
+        currJumpSpeed = 0;
 
         while(position < target && Input.GetButton("Jump"))
         {
@@ -339,8 +393,11 @@ public class ParkourPlayerPawn : Pawn {
             transform.position = Vector3.Lerp(lerpAB, lerpBC, position);
             position += Time.deltaTime*climbSpeed;
             velocityOnJumpStart = Vector3.zero;
+            currJumpSpeed = 0;
+            gravity = 0;
             yield return null;
         }
+        currJumpSpeed = 0;
         currPlayerState = PlayerState.FALLING;
         
     }
@@ -386,7 +443,7 @@ public class ParkourPlayerPawn : Pawn {
             if(landedThisFrame && Input.GetButton("Jump"))
             {
                 canReJump = true;
-                Jump();
+                Jump(1);
             }
             time += Time.deltaTime;
             yield return null;

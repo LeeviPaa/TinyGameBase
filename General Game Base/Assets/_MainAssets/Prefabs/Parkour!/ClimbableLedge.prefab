@@ -42,7 +42,7 @@ GameObject:
   m_Layer: 0
   m_Name: ClimbTrigger
   m_TagString: Untagged
-  m_Icon: {fileID: 0}
+  m_Icon: {fileID: 1206586993520771344, guid: 0000000000000000d000000000000000, type: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
@@ -53,7 +53,7 @@ Transform:
   m_PrefabInternal: {fileID: 100100000}
   m_GameObject: {fileID: 1269555647326922}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -5, y: 14.91, z: -12}
+  m_LocalPosition: {x: 5, y: 8, z: -12}
   m_LocalScale: {x: 6.693262, y: 0.79262507, z: 6.693263}
   m_Children:
   - {fileID: 4797758471996814}
@@ -67,8 +67,8 @@ Transform:
   m_PrefabInternal: {fileID: 100100000}
   m_GameObject: {fileID: 1807613897406194}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1.1386319, y: 1.138632, z: 1.138632}
+  m_LocalPosition: {x: 0, y: 0.5, z: 0}
+  m_LocalScale: {x: 1.1386319, y: 0.1, z: 1.138632}
   m_Children: []
   m_Father: {fileID: 4194973316889840}
   m_RootOrder: 0
