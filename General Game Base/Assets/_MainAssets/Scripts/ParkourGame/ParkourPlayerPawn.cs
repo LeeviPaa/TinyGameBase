@@ -49,6 +49,7 @@ public class ParkourPlayerPawn : Pawn {
     public float minVelocityToWallrun = 10;
     public float jumpFromWallrunTime = 0.1f;
     public float jumpFromWallrunCooldown = 0.2f;
+    private bool canWallrun = false;
 
     //climbing 
     public float climbForwardDistance = 0.5f;
@@ -65,7 +66,7 @@ public class ParkourPlayerPawn : Pawn {
     #region Monobehaviour
     private void Start()
     {
-        playerCamera = GetComponentInChildren<Camera>().transform.parent;
+        playerCamera = GetComponentInChildren<Camera>().transform;
         pc = GetComponent<CharacterController>();
         Cursor.visible = false;
     }
@@ -76,11 +77,14 @@ public class ParkourPlayerPawn : Pawn {
 
         //always can rotate camera and get input
         CheckInputForNonUpdate();
+
         if (!Cursor.visible)
-            playerCamera.Rotate(new Vector3(-Input.GetAxis("Mouse Y") * rotationSpeed * Time.deltaTime, 0));
+            playerCamera.parent.Rotate(new Vector3(-Input.GetAxis("Mouse Y") * rotationSpeed * Time.deltaTime, 0));
 
         //if we are climbing, don't do anything
         if (currPlayerState == PlayerState.CLIMBING) { return; }
+        //if we are wallrunning successfully, don't do anything
+        if(canWallrun && Wallrun()){ return; }
 
         DoubleCheckGrounded();
         CheckCollisions();
@@ -166,6 +170,7 @@ public class ParkourPlayerPawn : Pawn {
                 StartCoroutine(ReJumpTimer());
                 canReJump = true;
                 landedThisFrame = true;
+                cantWallrunBeforeHitGroundAgain = false;
                 velocityOnJumpStart = Vector3.zero;
             }
             else
@@ -200,6 +205,54 @@ public class ParkourPlayerPawn : Pawn {
         else
         {
             currJumpSpeed = 0;
+        }
+    }
+    private bool Wallrun()
+    {
+        Debug.Log("Wallrun");
+        if (currWallrunWall != null && Input.GetButton("Jump"))
+        {
+            currPlayerState = PlayerState.WALLRUNNING;
+
+            if (currJumpSpeed > 0)
+            {
+                currJumpSpeed -= gravityAcceleration * Time.deltaTime * 2;
+            }
+            else
+            {
+                currJumpSpeed = 0;
+            }
+
+            Plane P = new Plane(currWallrunWall.transform.up, currWallrunWall.transform.position);
+
+            Vector3 moveVector = (transform.forward * Input.GetAxis("Vertical") + transform.right * Input.GetAxis("Horizontal")) * speed * Time.deltaTime;
+            Vector3 point = transform.position + moveVector;
+
+            float delta = P.GetDistanceToPoint(point);
+
+            moveVector -= P.normal * delta;
+            moveVector -= Vector3.up * wallrunningGravity*Time.deltaTime;
+            moveVector += Vector3.up * currJumpSpeed * Time.deltaTime;
+
+            pc.Move(moveVector);
+
+            if (!Cursor.visible)
+            {
+                transform.Rotate(new Vector3(0, Input.GetAxis("Mouse X") * rotationSpeed * Time.deltaTime, 0));
+            }
+
+            return true;
+        }
+        else if (Input.GetButtonUp("Jump"))
+        {
+            Debug.LogWarning("Stopped wallrunning");
+            currPlayerState = PlayerState.FALLING;
+            return false;
+        }
+        else
+        {
+            currPlayerState = PlayerState.FALLING;
+            return false;
         }
     }
     private void CalculateVelocity()
@@ -332,48 +385,44 @@ public class ParkourPlayerPawn : Pawn {
     public void StartWallrunning(WallrunnableWall wall)
     {
         Vector3 currvelocityWithoutY = pc.velocity;
+        currWallrunWall = wall;
         currvelocityWithoutY.y = 0;
         
         if (getButtonJump && currvelocityWithoutY.magnitude > minVelocityToWallrun)
         {
-            currJumpSpeed = 0;
             velocityOnJumpStart = Vector3.zero;
+            canWallrun = true;
         }
     }
 
     bool getButtonDownJump = false;
     bool getButtonJump = false;
     bool getbuttonUpJump = false;
+    bool cantWallrunBeforeHitGroundAgain = false;
+    WallrunnableWall currWallrunWall;
     public void UpdateRunnableWall(WallrunnableWall wall)
     {
-
-
         Vector3 currvelocityWithoutY = pc.velocity;
         currvelocityWithoutY.y = 0;
 
-        if (getButtonJump)
+        if (currvelocityWithoutY.magnitude > minVelocityToWallrun && !cantWallrunBeforeHitGroundAgain)
         {
-            if (currvelocityWithoutY.magnitude > minVelocityToWallrun)
-            {
-                currPlayerState = PlayerState.WALLRUNNING;
-            }
-            else
-            {
-                currPlayerState = PlayerState.FALLING;
-                velocityOnJumpStart = currVelocity;
-            }
+            canWallrun = true;
+            currWallrunWall = wall;
         }
         else
         {
+            canWallrun = false;
+            velocityOnJumpStart = pc.velocity;
             currPlayerState = PlayerState.FALLING;
-            velocityOnJumpStart = currVelocity;
+            cantWallrunBeforeHitGroundAgain = true;
         }
     }
-
     public void ExitRunnableWall(WallrunnableWall wall)
     {
+        canWallrun = false;
         currPlayerState = PlayerState.FALLING;
-        velocityOnJumpStart = currVelocity;
+        velocityOnJumpStart = pc.velocity;
     }
     IEnumerator ClimbALedge(Vector3 startPos, Vector3 midway, Vector3 destination)
     {

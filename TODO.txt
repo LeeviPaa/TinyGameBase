@@ -1,0 +1,7 @@
+* Redo wallrunning
+	-Maybe make a completely different movement 		system on Update()
+	-The wall only tells you when you are on the 	wall
+	-Pawn tells the wall that you are leaving
+* Add jumping from the wall to wallrunning
+* Interactable objects
+* Elevators
