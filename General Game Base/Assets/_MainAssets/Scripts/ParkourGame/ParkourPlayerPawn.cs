@@ -27,6 +27,8 @@ public class ParkourPlayerPawn : Pawn {
     private int currReJumps = 0;
     private bool canReJump = false;
     private bool prevReJumpSuccess = false;
+    private Vector3 velocityOnJumpStart = Vector3.zero;
+    public float holdToJumpLongerTime = 0.5f;
 
     //gravity
     public float gravityAcceleration = 10;
@@ -38,6 +40,10 @@ public class ParkourPlayerPawn : Pawn {
     public float speed = 10;
     public float rotationSpeed = 10;
     private CollisionFlags prevColl;
+
+    //wallrunning
+    public float wallrunningGravity = 10;
+    public float minVelocityToWallrun = 10;
 
     //private
     private Transform playerCamera;
@@ -63,9 +69,9 @@ public class ParkourPlayerPawn : Pawn {
         //always can rotate camera
         if(!Cursor.visible)
             playerCamera.Rotate(new Vector3(-Input.GetAxis("Mouse Y") * rotationSpeed * Time.deltaTime, 0));
-        
+
         //if we are climbing, don't do anything
-        if(currPlayerState == PlayerState.CLIMBING) { return; }
+        if (currPlayerState == PlayerState.CLIMBING) { return; }
 
         DoubleCheckGrounded();
         CheckCollisions();
@@ -81,11 +87,13 @@ public class ParkourPlayerPawn : Pawn {
         }
 
         prevColl = pc.Move(currVelocity * Time.deltaTime);
-        t.text = currPlayerState.ToString() + "\n" + "Prev re-jump: " + currReJumps.ToString();
     }
     private void LateUpdate()
     {
         prevPlayerState = currPlayerState;
+
+        //debug text
+        t.text = currPlayerState.ToString() + "\n" + "Prev re-jump: " + currReJumps.ToString();
     }
     #endregion
 
@@ -96,6 +104,7 @@ public class ParkourPlayerPawn : Pawn {
         {
             case CollisionFlags.Above:
                 currJumpSpeed = 0;
+                hitCelingWhileHoldingJump = true;
                 break;
             case CollisionFlags.Below:
                 //currPlayerState = PlayerState.GROUNDED;
@@ -112,14 +121,24 @@ public class ParkourPlayerPawn : Pawn {
         {
             landedThisFrame = false;
 
-            if (currVelocity.y < 1f)
+            if(prevPlayerState == PlayerState.GROUNDED)
             {
-                currPlayerState = PlayerState.FALLING;
+                //detatched from ground 
+                velocityOnJumpStart = currVelocity;
             }
-            else if (currVelocity.y > 0)
+
+            if (currPlayerState != PlayerState.WALLRUNNING && currPlayerState != PlayerState.CLIMBING)
             {
-                currPlayerState = PlayerState.JUMPING;
+                if (currVelocity.y < 1f)
+                {
+                    currPlayerState = PlayerState.FALLING;
+                }
+                else if (currVelocity.y > 0)
+                {
+                    currPlayerState = PlayerState.JUMPING;
+                }
             }
+
         }
         else
         {
@@ -131,6 +150,7 @@ public class ParkourPlayerPawn : Pawn {
                 StartCoroutine(ReJumpTimer());
                 canReJump = true;
                 landedThisFrame = true;
+                velocityOnJumpStart = Vector3.zero;
             }
             else
             {
@@ -140,10 +160,17 @@ public class ParkourPlayerPawn : Pawn {
     }
     private void CalculateAccelerations()
     {
-        if (!pc.isGrounded)
+        if (!pc.isGrounded && currPlayerState != PlayerState.CLIMBING)
         {
-            if (Mathf.Abs(gravity) < maxFallSpeed)
-                gravity += gravityAcceleration * Time.deltaTime;
+            if (currPlayerState != PlayerState.WALLRUNNING)
+            {
+                if (Mathf.Abs(gravity) < maxFallSpeed)
+                    gravity += gravityAcceleration * Time.deltaTime;
+            }
+            else
+            {
+                gravity = wallrunningGravity;
+            }
         }
         else
         {
@@ -161,6 +188,19 @@ public class ParkourPlayerPawn : Pawn {
     }
     private void CalculateVelocity()
     {
+        //Movement normally when grounded(+the time of the re jump delay). 
+        if (currPlayerState == PlayerState.GROUNDED || canReJump || currPlayerState == PlayerState.WALLRUNNING)
+        {
+            //Movement
+            currVelocity = (transform.forward * Input.GetAxis("Vertical")) + (transform.right * Input.GetAxis("Horizontal"));
+            currVelocity *= speed;
+        }
+        else if(currPlayerState == PlayerState.JUMPING || currPlayerState == PlayerState.FALLING) // Movement in air is impaired
+        {
+            currVelocity = new Vector3(velocityOnJumpStart.x, 0, velocityOnJumpStart.z);
+            currVelocity += (transform.forward * Input.GetAxis("Vertical")) + (transform.right * Input.GetAxis("Horizontal")) * speed * aerialSpeedMod;
+        }
+
         //Jumping   
         if (Input.GetButtonDown("Jump"))
         {
@@ -168,25 +208,22 @@ public class ParkourPlayerPawn : Pawn {
             {
                 Jump();
             }
-            else if(!bridgeToReJumpCooldown)
+            else if (!bridgeToReJumpCooldown)
             {
                 StartCoroutine(BridgeToReJump());
             }
         }
 
-        //Movement
-        currVelocity = (transform.forward * Input.GetAxis("Vertical")) + (transform.right * Input.GetAxis("Horizontal"));
-        currVelocity *= speed;
-
-        //Movement in air is impaired
-        if (!IsGrounded())
-        {
-            currVelocity *= aerialSpeedMod;
-        }
-
         //Movement + jumping = vector3
-        currVelocity += Vector3.up * currJumpSpeed;
-        currVelocity -= Vector3.up * gravity;
+        if (currPlayerState == PlayerState.WALLRUNNING)
+        {
+            currVelocity -= Vector3.up * gravity;
+        }
+        else
+        {
+            currVelocity += Vector3.up * currJumpSpeed;
+            currVelocity -= Vector3.up * gravity;
+        }
 
         
     }
@@ -210,6 +247,7 @@ public class ParkourPlayerPawn : Pawn {
     #endregion
 
     #region actions
+    bool reJumpedInTimeWindow = false;
     private void Jump()
     {
         if (canReJump)
@@ -225,14 +263,19 @@ public class ParkourPlayerPawn : Pawn {
 
             currJumpSpeed = jumpSpeed + jumpSpeed * reJumpIncrement * currReJumps;
             prevReJumpSuccess = true;
+            reJumpedInTimeWindow = true;
             canReJump = false;
         }
         else
         {
             currJumpSpeed = jumpSpeed;
+            StartCoroutine(HoldToJumpLonger());
             prevReJumpSuccess = false;
             currReJumps = 0;
         }
+
+        currPlayerState = PlayerState.JUMPING;
+        velocityOnJumpStart = currVelocity;
     }
     public void UpdateClimbableLedge(ClimbableLedge ledge)
     {
@@ -243,11 +286,48 @@ public class ParkourPlayerPawn : Pawn {
             StartCoroutine(ClimbALedge(transform.position,transform.position + new Vector3(0, 2, 0), ledge.transform.position + new Vector3(0,2,0)));
         }
     }
+    public void FallOffMap()
+    {
+        SpawnPosition[] sp = FindObjectsOfType<SpawnPosition>();
+        transform.position = sp[0].transform.position;
+    }
+    public void StartWallrunning(WallrunnableWall wall)
+    {
+        Vector3 currvelocityWithoutY = pc.velocity;
+        currvelocityWithoutY.y = 0;
+        
+        if (Input.GetButton("Jump") && currvelocityWithoutY.magnitude > minVelocityToWallrun)
+        {
+            currJumpSpeed = 0;
+            velocityOnJumpStart = Vector3.zero;
+        }
+    }
+    public void UpdateRunnableWall(WallrunnableWall wall)
+    {
+        Debug.Log("can Wallrun!");
+
+        Vector3 currvelocityWithoutY = pc.velocity;
+        currvelocityWithoutY.y = 0;
+
+        if (Input.GetButton("Jump") && currvelocityWithoutY.magnitude > minVelocityToWallrun)
+        {
+            currPlayerState = PlayerState.WALLRUNNING;
+        }
+        else
+        {
+            currPlayerState = PlayerState.FALLING;
+        }
+    }
+    public void ExitRunnableWall(WallrunnableWall wall)
+    {
+        currPlayerState = PlayerState.FALLING;
+    }
     IEnumerator ClimbALedge(Vector3 startPos, Vector3 midway, Vector3 destination)
     {
         float target = 1;
         float position = 0;
         float climbSpeed = 1;
+        velocityOnJumpStart = Vector3.zero;
 
         while(position < target && Input.GetButton("Jump"))
         {
@@ -258,15 +338,43 @@ public class ParkourPlayerPawn : Pawn {
 
             transform.position = Vector3.Lerp(lerpAB, lerpBC, position);
             position += Time.deltaTime*climbSpeed;
+            velocityOnJumpStart = Vector3.zero;
             yield return null;
         }
         currPlayerState = PlayerState.FALLING;
         
     }
+    bool hitCelingWhileHoldingJump = false;
+    IEnumerator HoldToJumpLonger()
+    {
+        hitCelingWhileHoldingJump = false;
+        float time = 0;
+        while(time < holdToJumpLongerTime 
+            && Input.GetButton("Jump") 
+            && !hitCelingWhileHoldingJump 
+            && currPlayerState != PlayerState.CLIMBING 
+            && currPlayerState != PlayerState.WALLRUNNING)
+        {
+            time += Time.deltaTime;
+            currJumpSpeed = jumpSpeed;
+            yield return null;
+        }
+    }
     IEnumerator ReJumpTimer()
     {
-        yield return new WaitForSeconds(reJumpTimeframe);
+        reJumpedInTimeWindow = false;
+        float t = 0;
+        while (t < reJumpTimeframe)
+        {
+            t += Time.deltaTime;
+            velocityOnJumpStart = currVelocity;
+            yield return null;
+        }
         canReJump = false;
+        if(!reJumpedInTimeWindow)
+        {
+            currReJumps = 0;
+        }
     }
     bool bridgeToReJumpCooldown = false;
     IEnumerator BridgeToReJump()
@@ -287,4 +395,9 @@ public class ParkourPlayerPawn : Pawn {
         bridgeToReJumpCooldown = false;
     }
     #endregion
+
+    /*
+     * todo: 
+     * Jumping from wallrun to a direction
+     */
 }

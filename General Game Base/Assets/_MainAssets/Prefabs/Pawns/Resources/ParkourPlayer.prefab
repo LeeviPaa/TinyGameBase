@@ -422,15 +422,18 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Possessable: 1
-  jumpSpeed: 35
+  jumpSpeed: 25
   reJumpTimeframe: 0.05
-  reJumpIncrement: 0.35
-  reJumpMaxCount: 2
+  reJumpIncrement: 0.75
+  reJumpMaxCount: 3
+  holdToJumpLongerTime: 0.5
   gravityAcceleration: 50
   maxFallSpeed: 100
   aerialSpeedMod: 0.8
   speed: 20
   rotationSpeed: 100
+  wallrunningGravity: 3
+  minVelocityToWallrun: 10
   t: {fileID: 114689850287042536}
 --- !u!114 &114440248525200684
 MonoBehaviour:
